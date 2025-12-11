@@ -141,30 +141,19 @@ class TestPaymentCreation:
             "amount": 299.99,
             "currency": "USD"
         }
-        # Mock httpx.AsyncClient to avoid actual HTTP calls
-        # The notification call is wrapped in try-except, so errors won't fail the test
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client_instance = MagicMock()
-        mock_client_instance.post = mock_post
-        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
-        mock_client_instance.__aexit__ = AsyncMock(return_value=None)
-        
-        # Patch httpx.AsyncClient in the main module where it's used
-        with patch('main.httpx.AsyncClient', return_value=mock_client_instance):
-            response = client.post(
-                "/payments",
-                json=payment_data,
-                headers={"Authorization": f"Bearer {test_token}"}
-            )
-            assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.json()}"
-            data = response.json()
-            assert data["booking_id"] == 1
-            assert data["amount"] == 299.99
-            assert data["status"] == "completed"
-            assert "payment_id" in data
+        # The notification call is wrapped in try-except, so it won't fail even if httpx fails
+        # We can test without mocking since the notification is non-blocking
+        response = client.post(
+            "/payments",
+            json=payment_data,
+            headers={"Authorization": f"Bearer {test_token}"}
+        )
+        assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.json()}"
+        data = response.json()
+        assert data["booking_id"] == 1
+        assert data["amount"] == 299.99
+        assert data["status"] == "completed"
+        assert "payment_id" in data
     
     def test_create_payment_wrong_amount(self, client, test_booking_and_flight, test_token):
         """Test payment with wrong amount"""
