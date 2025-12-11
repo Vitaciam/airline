@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
 import sys
 import os
 from jose import jwt
@@ -141,16 +141,25 @@ class TestPaymentCreation:
             "amount": 299.99,
             "currency": "USD"
         }
-        with patch('main.httpx.AsyncClient') as mock_client:
-            mock_response = mock_client.return_value.__aenter__.return_value.post
-            mock_response.return_value.status_code = 200
-            
+        # Mock httpx.AsyncClient to avoid actual HTTP calls
+        from unittest.mock import AsyncMock, MagicMock
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {}
+        
+        mock_post = AsyncMock(return_value=mock_response)
+        mock_client_instance = MagicMock()
+        mock_client_instance.post = mock_post
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('main.httpx.AsyncClient', return_value=mock_client_instance):
             response = client.post(
                 "/payments",
                 json=payment_data,
                 headers={"Authorization": f"Bearer {test_token}"}
             )
-            assert response.status_code == 201
+            assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.json()}"
             data = response.json()
             assert data["booking_id"] == 1
             assert data["amount"] == 299.99
