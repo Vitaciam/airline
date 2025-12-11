@@ -22,8 +22,9 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-JWT_SECRET = "test-secret-key"
-JWT_ALGORITHM = "HS256"
+# Use same secret as default in main.py or set via env var
+JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-jwt-key-change-in-production")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 
 @pytest.fixture
@@ -31,9 +32,14 @@ def db():
     """Create database tables and session for testing"""
     db = TestingSessionLocal()
     try:
+        # Drop tables first to avoid conflicts
+        db.execute(text("DROP TABLE IF EXISTS flights"))
+        db.execute(text("DROP TABLE IF EXISTS bookings"))
+        db.execute(text("DROP TABLE IF EXISTS users"))
+        
         # Create test tables
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE users (
                 id INTEGER PRIMARY KEY,
                 email TEXT,
                 first_name TEXT,
@@ -41,7 +47,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS bookings (
+            CREATE TABLE bookings (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
                 flight_id INTEGER,
@@ -49,7 +55,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS flights (
+            CREATE TABLE flights (
                 id INTEGER PRIMARY KEY,
                 flight_number TEXT,
                 origin TEXT,
@@ -61,12 +67,22 @@ def db():
         db.commit()
         yield db
     finally:
+        db.rollback()
+        # Clean up tables
+        db.execute(text("DROP TABLE IF EXISTS flights"))
+        db.execute(text("DROP TABLE IF EXISTS bookings"))
+        db.execute(text("DROP TABLE IF EXISTS users"))
+        db.commit()
         db.close()
 
 
 @pytest.fixture
 def client(db):
     """Create test client with database override"""
+    # Set environment variables for JWT
+    os.environ["JWT_SECRET"] = JWT_SECRET
+    os.environ["JWT_ALGORITHM"] = JWT_ALGORITHM
+    
     def override_get_db():
         try:
             yield db
@@ -89,6 +105,8 @@ def test_token():
 @pytest.fixture
 def test_user(db):
     """Create a test user"""
+    # Clear existing data first
+    db.execute(text("DELETE FROM users"))
     db.execute(text("""
         INSERT INTO users (id, email, first_name, last_name)
         VALUES (1, 'test@example.com', 'Test', 'User')
@@ -102,8 +120,9 @@ class TestEmailSending:
     
     @patch('main.SMTP_USER', '')
     @patch('main.SMTP_PASSWORD', '')
-    def test_send_email_no_smtp_config(self):
+    def test_send_email_no_smtp_config(self, db):
         """Test email sending when SMTP is not configured"""
+        # When SMTP is not configured, send_email should return True (logs instead)
         result = send_email(
             to_email="test@example.com",
             subject="Test",
@@ -114,7 +133,7 @@ class TestEmailSending:
     @patch('main.smtplib.SMTP')
     @patch('main.SMTP_USER', 'test@example.com')
     @patch('main.SMTP_PASSWORD', 'password')
-    def test_send_email_with_smtp(self, mock_smtp):
+    def test_send_email_with_smtp(self, mock_smtp_password, mock_smtp_user, mock_smtp):
         """Test email sending with SMTP configured"""
         mock_server = MagicMock()
         mock_smtp.return_value.__enter__.return_value = mock_server
