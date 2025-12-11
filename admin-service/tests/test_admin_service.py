@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 import sys
 import os
 from datetime import datetime
@@ -23,19 +23,29 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-JWT_SECRET = "test-secret-key"
-JWT_ALGORITHM = "HS256"
+# Use same secret as default in main.py or set via env var
+JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-jwt-key-change-in-production")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 
 @pytest.fixture
 def db():
     """Create database tables and session for testing"""
+    # Clean up before creating new tables
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:
+        # Drop tables first to avoid conflicts
+        db.execute(text("DROP TABLE IF EXISTS baggage"))
+        db.execute(text("DROP TABLE IF EXISTS bookings"))
+        db.execute(text("DROP TABLE IF EXISTS users"))
+        db.execute(text("DROP TABLE IF EXISTS flights"))
+        db.execute(text("DROP TABLE IF EXISTS airlines"))
+        
         # Create test tables
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS airlines (
+            CREATE TABLE airlines (
                 id INTEGER PRIMARY KEY,
                 name TEXT,
                 code TEXT UNIQUE,
@@ -44,7 +54,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS flights (
+            CREATE TABLE flights (
                 id INTEGER PRIMARY KEY,
                 airline_id INTEGER,
                 flight_number TEXT,
@@ -59,7 +69,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE users (
                 id INTEGER PRIMARY KEY,
                 email TEXT,
                 first_name TEXT,
@@ -70,7 +80,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS bookings (
+            CREATE TABLE bookings (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
                 flight_id INTEGER,
@@ -80,7 +90,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS baggage (
+            CREATE TABLE baggage (
                 id INTEGER PRIMARY KEY,
                 booking_id INTEGER,
                 baggage_tag TEXT,
@@ -90,20 +100,38 @@ def db():
         db.commit()
         yield db
     finally:
+        db.rollback()
+        # Clean up tables
+        db.execute(text("DROP TABLE IF EXISTS baggage"))
+        db.execute(text("DROP TABLE IF EXISTS bookings"))
+        db.execute(text("DROP TABLE IF EXISTS users"))
+        db.execute(text("DROP TABLE IF EXISTS flights"))
+        db.execute(text("DROP TABLE IF EXISTS airlines"))
+        db.commit()
         db.close()
-        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
 def client(db):
     """Create test client with database override"""
+    # Set environment variables for JWT
+    os.environ["JWT_SECRET"] = JWT_SECRET
+    os.environ["JWT_ALGORITHM"] = JWT_ALGORITHM
+    
     def override_get_db():
         try:
             yield db
         finally:
             pass
     
+    async def override_verify_admin_token():
+        """Override verify_admin_token for testing"""
+        return {"user_id": 1}
+    
     app.dependency_overrides[get_db] = override_get_db
+    from main import verify_admin_token
+    app.dependency_overrides[verify_admin_token] = override_verify_admin_token
+    
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -119,10 +147,11 @@ def admin_token():
 class TestAirlines:
     """Test airline management endpoints"""
     
-    @patch('main.verify_admin_token')
-    def test_create_airline(self, mock_verify, client, admin_token):
+    def test_create_airline(self, client, admin_token, db):
         """Test creating an airline"""
-        mock_verify.return_value = {"user_id": 1}
+        # Clear existing data
+        db.execute(text("DELETE FROM airlines"))
+        db.commit()
         
         airline_data = {
             "name": "Test Airlines",
@@ -134,15 +163,15 @@ class TestAirlines:
             json=airline_data,
             headers={"Authorization": f"Bearer {admin_token}"}
         )
-        assert response.status_code == 201
+        assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.json()}"
         data = response.json()
         assert data["name"] == "Test Airlines"
         assert data["code"] == "TA"
     
-    @patch('main.verify_admin_token')
-    def test_get_airlines(self, mock_verify, client, admin_token, db):
+    def test_get_airlines(self, client, admin_token, db):
         """Test getting all airlines"""
-        mock_verify.return_value = {"user_id": 1}
+        # Clear existing data
+        db.execute(text("DELETE FROM airlines"))
         
         # Create test airline
         db.execute(text("""
@@ -155,7 +184,7 @@ class TestAirlines:
             "/airlines",
             headers={"Authorization": f"Bearer {admin_token}"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.json()}"
         airlines = response.json()
         assert len(airlines) == 1
 
@@ -163,10 +192,11 @@ class TestAirlines:
 class TestFlights:
     """Test flight management endpoints"""
     
-    @patch('main.verify_admin_token')
-    def test_create_flight(self, mock_verify, client, admin_token, db):
+    def test_create_flight(self, client, admin_token, db):
         """Test creating a flight"""
-        mock_verify.return_value = {"user_id": 1}
+        # Clear existing data
+        db.execute(text("DELETE FROM flights"))
+        db.execute(text("DELETE FROM airlines"))
         
         # Create airline first
         db.execute(text("""
@@ -190,7 +220,7 @@ class TestFlights:
             json=flight_data,
             headers={"Authorization": f"Bearer {admin_token}"}
         )
-        assert response.status_code == 201
+        assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.json()}"
         data = response.json()
         assert data["flight_number"] == "FL001"
 
@@ -198,10 +228,13 @@ class TestFlights:
 class TestStatistics:
     """Test statistics endpoint"""
     
-    @patch('main.verify_admin_token')
-    def test_get_statistics(self, mock_verify, client, admin_token, db):
+    def test_get_statistics(self, client, admin_token, db):
         """Test getting system statistics"""
-        mock_verify.return_value = {"user_id": 1}
+        # Clear existing data
+        db.execute(text("DELETE FROM baggage"))
+        db.execute(text("DELETE FROM bookings"))
+        db.execute(text("DELETE FROM flights"))
+        db.execute(text("DELETE FROM users"))
         
         # Create test data
         db.execute(text("""
@@ -226,7 +259,7 @@ class TestStatistics:
             "/statistics",
             headers={"Authorization": f"Bearer {admin_token}"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.json()}"
         data = response.json()
         assert data["total_users"] == 1
         assert data["total_flights"] == 1
