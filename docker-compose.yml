@@ -1,0 +1,168 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: airline_postgres
+    environment:
+      POSTGRES_USER: airline_user
+      POSTGRES_PASSWORD: airline_password
+      POSTGRES_DB: airline_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - airline_network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: airline_auth_service
+    environment:
+      DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
+      JWT_SECRET: your-secret-jwt-key-change-in-production
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8001:8000"
+    depends_on:
+      - postgres
+    networks:
+      - airline_network
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    container_name: airline_booking_service
+    environment:
+      DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
+      AUTH_SERVICE_URL: http://auth-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
+      JWT_SECRET: your-secret-jwt-key-change-in-production
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8002:8000"
+    depends_on:
+      - postgres
+      - auth-service
+      - notification-service
+    networks:
+      - airline_network
+
+  baggage-service:
+    build:
+      context: ./baggage-service
+      dockerfile: Dockerfile
+    container_name: airline_baggage_service
+    environment:
+      DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
+      AUTH_SERVICE_URL: http://auth-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
+      JWT_SECRET: your-secret-jwt-key-change-in-production
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8003:8000"
+    depends_on:
+      - postgres
+      - auth-service
+      - notification-service
+    networks:
+      - airline_network
+
+  admin-service:
+    build:
+      context: ./admin-service
+      dockerfile: Dockerfile
+    container_name: airline_admin_service
+    environment:
+      DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
+      AUTH_SERVICE_URL: http://auth-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
+    ports:
+      - "8004:8000"
+    depends_on:
+      - postgres
+      - auth-service
+      - notification-service
+    networks:
+      - airline_network
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: airline_notification_service
+    environment:
+      DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
+      JWT_SECRET: your-secret-jwt-key-change-in-production
+      JWT_ALGORITHM: HS256
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@airline.com}
+    ports:
+      - "8005:8000"
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - airline_network
+
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: airline_payment_service
+    environment:
+      DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
+      AUTH_SERVICE_URL: http://auth-service:8000
+      BOOKING_SERVICE_URL: http://booking-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
+      JWT_SECRET: your-secret-jwt-key-change-in-production
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8006:8000"
+    depends_on:
+      - postgres
+      - auth-service
+      - booking-service
+      - notification-service
+    networks:
+      - airline_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: airline_frontend
+    environment:
+      REACT_APP_AUTH_SERVICE: http://localhost:8001
+      REACT_APP_BOOKING_SERVICE: http://localhost:8002
+      REACT_APP_BAGGAGE_SERVICE: http://localhost:8003
+      REACT_APP_ADMIN_SERVICE: http://localhost:8004
+      REACT_APP_NOTIFICATION_SERVICE: http://localhost:8005
+      REACT_APP_PAYMENT_SERVICE: http://localhost:8006
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth-service
+      - booking-service
+      - baggage-service
+      - admin-service
+      - notification-service
+      - payment-service
+    networks:
+      - airline_network
+    # Используем host сеть для доступа к localhost с хост-машины
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
+
+networks:
+  airline_network:
+    driver: bridge
+

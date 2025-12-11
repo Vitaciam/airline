@@ -1,0 +1,259 @@
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from unittest.mock import patch
+import sys
+import os
+from jose import jwt
+
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from main import app, get_db, Base
+
+# Create in-memory SQLite database for testing
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+JWT_SECRET = "test-secret-key"
+JWT_ALGORITHM = "HS256"
+
+
+@pytest.fixture
+def db():
+    """Create database tables and session for testing"""
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        # Create test tables
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS bookings (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                flight_id INTEGER,
+                seat_number TEXT,
+                status TEXT
+            )
+        """))
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS flights (
+                id INTEGER PRIMARY KEY,
+                flight_number TEXT,
+                origin TEXT,
+                destination TEXT,
+                price REAL
+            )
+        """))
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY,
+                booking_id INTEGER,
+                user_id INTEGER,
+                payment_id TEXT UNIQUE,
+                amount REAL,
+                currency TEXT,
+                payment_method TEXT,
+                status TEXT,
+                created_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                refund_id TEXT
+            )
+        """))
+        db.commit()
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def client(db):
+    """Create test client with database override"""
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+    
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_token():
+    """Create a test JWT token"""
+    data = {"sub": "1"}
+    return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+@pytest.fixture
+def test_booking_and_flight(db):
+    """Create test booking and flight"""
+    db.execute(text("""
+        INSERT INTO flights (id, flight_number, origin, destination, price)
+        VALUES (1, 'FL001', 'Paris', 'London', 299.99)
+    """))
+    db.execute(text("""
+        INSERT INTO bookings (id, user_id, flight_id, seat_number, status)
+        VALUES (1, 1, 1, 'A1', 'confirmed')
+    """))
+    db.commit()
+    return {"booking_id": 1, "flight_id": 1}
+
+
+class TestPaymentCreation:
+    """Test payment creation endpoints"""
+    
+    def test_create_payment_success(self, client, test_booking_and_flight, test_token):
+        """Test successful payment creation"""
+        payment_data = {
+            "booking_id": 1,
+            "payment_method": "card",
+            "amount": 299.99,
+            "currency": "USD"
+        }
+        with patch('main.httpx.AsyncClient') as mock_client:
+            mock_response = mock_client.return_value.__aenter__.return_value.post
+            mock_response.return_value.status_code = 200
+            
+            response = client.post(
+                "/payments",
+                json=payment_data,
+                headers={"Authorization": f"Bearer {test_token}"}
+            )
+            assert response.status_code == 201
+            data = response.json()
+            assert data["booking_id"] == 1
+            assert data["amount"] == 299.99
+            assert data["status"] == "completed"
+            assert "payment_id" in data
+    
+    def test_create_payment_wrong_amount(self, client, test_booking_and_flight, test_token):
+        """Test payment with wrong amount"""
+        payment_data = {
+            "booking_id": 1,
+            "payment_method": "card",
+            "amount": 199.99,  # Wrong amount
+            "currency": "USD"
+        }
+        response = client.post(
+            "/payments",
+            json=payment_data,
+            headers={"Authorization": f"Bearer {test_token}"}
+        )
+        assert response.status_code == 400
+        assert "amount" in response.json()["detail"].lower()
+    
+    def test_create_payment_duplicate(self, client, test_booking_and_flight, test_token, db):
+        """Test creating duplicate payment"""
+        # Create first payment
+        db.execute(text("""
+            INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
+                                 currency, payment_method, status)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed')
+        """))
+        db.commit()
+        
+        payment_data = {
+            "booking_id": 1,
+            "payment_method": "card",
+            "amount": 299.99,
+            "currency": "USD"
+        }
+        response = client.post(
+            "/payments",
+            json=payment_data,
+            headers={"Authorization": f"Bearer {test_token}"}
+        )
+        assert response.status_code == 400
+        assert "already completed" in response.json()["detail"].lower()
+
+
+class TestPaymentQueries:
+    """Test payment query endpoints"""
+    
+    def test_get_my_payments(self, client, test_token, db):
+        """Test getting user's payments"""
+        # Create payment
+        db.execute(text("""
+            INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
+                                 currency, payment_method, status)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed')
+        """))
+        db.commit()
+        
+        response = client.get(
+            "/payments",
+            headers={"Authorization": f"Bearer {test_token}"}
+        )
+        assert response.status_code == 200
+        payments = response.json()
+        assert len(payments) == 1
+    
+    def test_get_payment_by_id(self, client, test_token, db):
+        """Test getting specific payment"""
+        # Create payment
+        db.execute(text("""
+            INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
+                                 currency, payment_method, status)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed')
+        """))
+        db.commit()
+        
+        response = client.get(
+            "/payments/PAY-123456",
+            headers={"Authorization": f"Bearer {test_token}"}
+        )
+        assert response.status_code == 200
+        payment = response.json()
+        assert payment["payment_id"] == "PAY-123456"
+
+
+class TestRefund:
+    """Test refund endpoints"""
+    
+    def test_refund_payment(self, client, test_token, db):
+        """Test refunding a payment"""
+        # Create completed payment
+        db.execute(text("""
+            INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
+                                 currency, payment_method, status, completed_at)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed', datetime('now'))
+        """))
+        db.commit()
+        
+        refund_data = {
+            "payment_id": "PAY-123456",
+            "reason": "Customer request"
+        }
+        response = client.post(
+            "/payments/PAY-123456/refund",
+            json=refund_data,
+            headers={"Authorization": f"Bearer {test_token}"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "refunded"
+        assert "refund_id" in data
+
+
+class TestHealthCheck:
+    """Test health check endpoint"""
+    
+    def test_health_check(self, client):
+        """Test health check endpoint"""
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["service"] == "payment-service"
+
