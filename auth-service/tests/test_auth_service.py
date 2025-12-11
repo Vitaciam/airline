@@ -25,6 +25,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture
 def db():
     """Create database tables and session for testing"""
+    # Clean up before creating new tables
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:
@@ -37,6 +39,13 @@ def db():
 @pytest.fixture
 def client(db):
     """Create test client with database override"""
+    # Set environment variables for JWT (use default from main.py)
+    import os
+    if "JWT_SECRET" not in os.environ:
+        os.environ["JWT_SECRET"] = "your-secret-jwt-key-change-in-production"
+    if "JWT_ALGORITHM" not in os.environ:
+        os.environ["JWT_ALGORITHM"] = "HS256"
+    
     def override_get_db():
         try:
             yield db

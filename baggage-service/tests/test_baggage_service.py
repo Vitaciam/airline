@@ -21,19 +21,26 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-JWT_SECRET = "test-secret-key"
-JWT_ALGORITHM = "HS256"
+# Use same secret as default in main.py or set via env var
+JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-jwt-key-change-in-production")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 
 @pytest.fixture
 def db():
     """Create database tables and session for testing"""
+    # Clean up before creating new tables
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:
+        # Drop tables first to avoid conflicts
+        db.execute(text("DROP TABLE IF EXISTS baggage"))
+        db.execute(text("DROP TABLE IF EXISTS bookings"))
+        
         # Create test tables
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS bookings (
+            CREATE TABLE bookings (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
                 flight_id INTEGER,
@@ -42,7 +49,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE IF NOT EXISTS baggage (
+            CREATE TABLE baggage (
                 id INTEGER PRIMARY KEY,
                 booking_id INTEGER,
                 baggage_tag TEXT UNIQUE,
@@ -55,13 +62,21 @@ def db():
         db.commit()
         yield db
     finally:
+        db.rollback()
+        # Clean up tables
+        db.execute(text("DROP TABLE IF EXISTS baggage"))
+        db.execute(text("DROP TABLE IF EXISTS bookings"))
+        db.commit()
         db.close()
-        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
 def client(db):
     """Create test client with database override"""
+    # Set environment variables for JWT
+    os.environ["JWT_SECRET"] = JWT_SECRET
+    os.environ["JWT_ALGORITHM"] = JWT_ALGORITHM
+    
     def override_get_db():
         try:
             yield db
@@ -84,6 +99,8 @@ def test_token():
 @pytest.fixture
 def test_booking(db):
     """Create a test booking"""
+    # Clear existing data first
+    db.execute(text("DELETE FROM bookings"))
     db.execute(text("""
         INSERT INTO bookings (id, user_id, flight_id, seat_number, status)
         VALUES (1, 1, 1, 'A1', 'confirmed')
