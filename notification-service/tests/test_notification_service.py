@@ -129,41 +129,28 @@ class TestEmailSending:
             body="Test body"
         )
         # Function should return True when SMTP is not configured (it logs instead)
-        assert result is True or result is False  # Either is acceptable, just no crash
+        assert result is True  # Should return True when SMTP not configured
     
     @patch('main.smtplib.SMTP')
-    def test_send_email_with_smtp(self, mock_smtp):
+    @patch('main.SMTP_USER', 'test@example.com')
+    @patch('main.SMTP_PASSWORD', 'password')
+    def test_send_email_with_smtp(self, mock_smtp_password, mock_smtp_user, mock_smtp):
         """Test email sending with SMTP configured"""
         # Mock SMTP server
         mock_server = MagicMock()
         mock_smtp.return_value.__enter__.return_value = mock_server
         
-        # Temporarily set SMTP config via monkeypatch at module level
-        original_smtp_user = getattr(send_email.__module__, 'SMTP_USER', None)
-        original_smtp_password = getattr(send_email.__module__, 'SMTP_PASSWORD', None)
-        
-        try:
-            # Patch module-level variables directly
-            import main
-            main.SMTP_USER = "test@example.com"
-            main.SMTP_PASSWORD = "password"
-            
-            result = send_email(
-                to_email="recipient@example.com",
-                subject="Test Subject",
-                body="Test body",
-                html="<p>Test body</p>"
-            )
-            assert result is True
-            mock_server.starttls.assert_called_once()
-            mock_server.login.assert_called_once()
-            mock_server.send_message.assert_called_once()
-        finally:
-            # Restore original values if they existed
-            if original_smtp_user is not None:
-                main.SMTP_USER = original_smtp_user
-            if original_smtp_password is not None:
-                main.SMTP_PASSWORD = original_smtp_password
+        # Since we're patching at decorator level, the function should use patched values
+        result = send_email(
+            to_email="recipient@example.com",
+            subject="Test Subject",
+            body="Test body",
+            html="<p>Test body</p>"
+        )
+        assert result is True
+        mock_server.starttls.assert_called_once()
+        mock_server.login.assert_called_once()
+        mock_server.send_message.assert_called_once()
 
 
 class TestNotificationEndpoints:

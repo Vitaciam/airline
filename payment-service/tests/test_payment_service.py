@@ -142,7 +142,7 @@ class TestPaymentCreation:
             "currency": "USD"
         }
         # Mock httpx.AsyncClient to avoid actual HTTP calls
-        # The notification call is wrapped in try-except, so we can just mock it to fail silently
+        # The notification call is wrapped in try-except, so errors won't fail the test
         mock_response = MagicMock()
         mock_response.status_code = 200
         
@@ -152,8 +152,8 @@ class TestPaymentCreation:
         mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
         mock_client_instance.__aexit__ = AsyncMock(return_value=None)
         
-        # Patch httpx.AsyncClient to return our mock
-        with patch('httpx.AsyncClient', return_value=mock_client_instance):
+        # Patch httpx.AsyncClient in the main module where it's used
+        with patch('main.httpx.AsyncClient', return_value=mock_client_instance):
             response = client.post(
                 "/payments",
                 json=payment_data,
