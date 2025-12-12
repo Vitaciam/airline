@@ -222,7 +222,7 @@ class TestAirlines:
 class TestFlights:
     """Test flight management endpoints"""
     
-    @pytest.mark.xfail(IS_CI, reason="SQLite transaction conflicts in CI environment")
+    @pytest.mark.skipif(IS_CI, reason="SQLite transaction conflicts in CI environment - known limitation")
     def test_create_flight(self, client, admin_token, db):
         """Test creating a flight"""
         # Setup: create airline using a separate connection that is fully closed
