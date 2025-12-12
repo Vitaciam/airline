@@ -17,7 +17,6 @@ function AdminPanel() {
   const [allBookings, setAllBookings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   
   // Toast state
   const [toast, setToast] = useState(null);
@@ -401,17 +400,6 @@ function AdminPanel() {
 
       <div className="section-gradient py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {success && (
-            <div className="mb-10 max-w-4xl mx-auto p-6 bg-green-50 border-l-4 border-green-500 rounded-2xl shadow-lg">
-              <div className="flex items-center">
-                <svg className="w-7 h-7 text-green-500 mr-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <p className="text-green-900 font-bold text-xl">{success}</p>
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="mb-10 max-w-4xl mx-auto p-6 bg-red-50 border-l-4 border-red-500 rounded-2xl shadow-lg">
               <div className="flex items-center">
