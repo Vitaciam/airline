@@ -143,11 +143,11 @@ def client(db):
         test_db = TestingSessionLocal()
         try:
             yield test_db
-            test_db.commit()
         except Exception:
             test_db.rollback()
             raise
         finally:
+            # Don't commit here - let the endpoint handle commits
             test_db.close()
     
     async def override_verify_admin_token():
@@ -221,30 +221,30 @@ class TestFlights:
     
     def test_create_flight(self, client, admin_token, db):
         """Test creating a flight"""
-        # Setup: create airline first using the API endpoint to avoid transaction conflicts
-        airline_data = {
-            "name": "Test Airlines",
-            "code": "TA",
-            "country": "Test Country"
-        }
-        airline_response = client.post(
-            "/airlines",
-            json=airline_data,
-            headers={"Authorization": f"Bearer {admin_token}"}
-        )
-        assert airline_response.status_code == 201
-        airline_id = airline_response.json()["id"]
-        
-        # Ensure the airline was created by verifying it exists
-        verify_response = client.get(
-            "/airlines",
-            headers={"Authorization": f"Bearer {admin_token}"}
-        )
-        assert verify_response.status_code == 200
-        assert len(verify_response.json()) > 0
+        # Setup: create airline using a separate connection that is fully closed
+        # This ensures no transaction conflicts with the endpoint
+        setup_conn = engine.connect()
+        try:
+            trans = setup_conn.begin()
+            try:
+                setup_conn.execute(text("DELETE FROM flights"))
+                setup_conn.execute(text("DELETE FROM airlines"))
+                setup_conn.execute(text("""
+                    INSERT INTO airlines (id, name, code, country, created_at)
+                    VALUES (1, 'Test Airlines', 'TA', 'Test Country', datetime('now'))
+                """))
+                trans.commit()
+            except Exception:
+                trans.rollback()
+                raise
+        finally:
+            setup_conn.close()
+            # Small delay to ensure connection is fully closed
+            import time
+            time.sleep(0.01)
         
         flight_data = {
-            "airline_id": airline_id,
+            "airline_id": 1,
             "flight_number": "FL001",
             "origin": "Paris",
             "destination": "London",
