@@ -12,7 +12,6 @@ function Register() {
     last_name: '',
     phone: ''
   });
-  const [error, setError] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -25,13 +24,13 @@ function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
 
     try {
       await register(formData);
       navigate('/flights');
     } catch (err) {
-      setError(t('register.error'));
+      // Error is handled by register function
+      console.error('Registration error:', err);
     }
   };
 

@@ -99,6 +99,7 @@ function AdminPanel() {
     } else if (activeTab === 'bookings') {
       loadBookings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadStatistics = async () => {

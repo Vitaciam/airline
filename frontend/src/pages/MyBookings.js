@@ -9,12 +9,12 @@ function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [payments, setPayments] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
     loadBookings();
     loadPayments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadBookings = async () => {
@@ -22,9 +22,8 @@ function MyBookings() {
       setLoading(true);
       const response = await bookingAPI.getBookings();
       setBookings(response.data);
-      setError('');
     } catch (err) {
-      setError(t('common.error'));
+      console.error('Error loading bookings:', err);
     } finally {
       setLoading(false);
     }
@@ -63,7 +62,9 @@ function MyBookings() {
       loadBookings();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.detail || t('common.error'));
+      console.error('Error cancelling booking:', err);
+      setSuccess(err.response?.data?.detail || t('common.error'));
+      setTimeout(() => setSuccess(''), 3000);
     }
   };
 

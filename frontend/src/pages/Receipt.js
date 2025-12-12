@@ -12,6 +12,7 @@ function Receipt() {
 
   useEffect(() => {
     loadReceipt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentId]);
 
   const loadReceipt = async () => {

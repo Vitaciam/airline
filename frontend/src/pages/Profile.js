@@ -5,7 +5,6 @@ import { authAPI, bookingAPI, baggageAPI } from '../services/api';
 
 function Profile() {
   const { t, i18n } = useTranslation();
-  const { user: authUser } = useAuth();
   const [user, setUser] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [baggage, setBaggage] = useState([]);
@@ -17,11 +16,11 @@ function Profile() {
     phone: '',
     email: ''
   });
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
     loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadProfile = async () => {
@@ -53,7 +52,7 @@ function Profile() {
         console.error('Error loading baggage:', err);
       }
     } catch (err) {
-      setError(t('common.error'));
+      console.error('Error loading profile:', err);
     } finally {
       setLoading(false);
     }
@@ -62,7 +61,6 @@ function Profile() {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     try {
-      setError('');
       const response = await authAPI.updateProfile(formData);
       const updatedUser = response.data.user || response.data;
       setUser(updatedUser);
@@ -81,7 +79,9 @@ function Profile() {
         window.location.reload();
       }, 1000);
     } catch (err) {
-      setError(err.response?.data?.detail || t('common.error'));
+      console.error('Error updating profile:', err);
+      setSuccess(err.response?.data?.detail || t('common.error'));
+      setTimeout(() => setSuccess(''), 3000);
     }
   };
 

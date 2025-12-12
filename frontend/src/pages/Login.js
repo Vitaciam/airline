@@ -7,13 +7,11 @@ function Login() {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
 
     try {
       const result = await login(email, password);
@@ -27,7 +25,7 @@ function Login() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.response?.data?.detail || t('login.error'));
+      // Error is handled by login function
     }
   };
 
