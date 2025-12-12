@@ -18,6 +18,7 @@ services:
     build:
       context: ./auth-service
       dockerfile: Dockerfile
+    image: viktoia/airline-auth:latest
     container_name: airline_auth_service
     environment:
       DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
@@ -34,6 +35,7 @@ services:
     build:
       context: ./booking-service
       dockerfile: Dockerfile
+    image: viktoia/airline-booking:latest
     container_name: airline_booking_service
     environment:
       DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
@@ -54,6 +56,7 @@ services:
     build:
       context: ./baggage-service
       dockerfile: Dockerfile
+    image: viktoia/airline-baggage:latest
     container_name: airline_baggage_service
     environment:
       DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
@@ -74,6 +77,7 @@ services:
     build:
       context: ./admin-service
       dockerfile: Dockerfile
+    image: viktoia/airline-admin:latest
     container_name: airline_admin_service
     environment:
       DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
@@ -92,6 +96,7 @@ services:
     build:
       context: ./notification-service
       dockerfile: Dockerfile
+    image: viktoia/airline-notification:latest
     container_name: airline_notification_service
     environment:
       DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
@@ -114,6 +119,7 @@ services:
     build:
       context: ./payment-service
       dockerfile: Dockerfile
+    image: viktoia/airline-payment:latest
     container_name: airline_payment_service
     environment:
       DATABASE_URL: postgresql://airline_user:airline_password@postgres:5432/airline_db
@@ -136,6 +142,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: viktoia/airline-frontend:latest
     container_name: airline_frontend
     environment:
       REACT_APP_AUTH_SERVICE: http://localhost:8001
@@ -155,7 +162,6 @@ services:
       - payment-service
     networks:
       - airline_network
-    # Используем host сеть для доступа к localhost с хост-машины
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -165,4 +171,3 @@ volumes:
 networks:
   airline_network:
     driver: bridge
-

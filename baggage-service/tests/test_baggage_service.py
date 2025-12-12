@@ -163,8 +163,8 @@ class TestBaggageQueries:
         """Test getting baggage status"""
         # Create baggage
         db.execute(text("""
-            INSERT INTO baggage (id, booking_id, baggage_tag, status, location)
-            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in')
+            INSERT INTO baggage (id, booking_id, baggage_tag, status, location, created_at)
+            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in', datetime('now'))
         """))
         db.commit()
         
@@ -181,8 +181,8 @@ class TestBaggageQueries:
         """Test getting baggage by booking ID"""
         # Create baggage
         db.execute(text("""
-            INSERT INTO baggage (id, booking_id, baggage_tag, status, location)
-            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in')
+            INSERT INTO baggage (id, booking_id, baggage_tag, status, location, created_at)
+            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in', datetime('now'))
         """))
         db.commit()
         
@@ -198,8 +198,8 @@ class TestBaggageQueries:
         """Test getting all user's baggage"""
         # Create baggage
         db.execute(text("""
-            INSERT INTO baggage (id, booking_id, baggage_tag, status, location)
-            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in')
+            INSERT INTO baggage (id, booking_id, baggage_tag, status, location, created_at)
+            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in', datetime('now'))
         """))
         db.commit()
         
@@ -219,8 +219,8 @@ class TestBaggageUpdate:
         """Test updating baggage status"""
         # Create baggage
         db.execute(text("""
-            INSERT INTO baggage (id, booking_id, baggage_tag, status, location)
-            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in')
+            INSERT INTO baggage (id, booking_id, baggage_tag, status, location, created_at)
+            VALUES (1, 1, 'ABC123456', 'checked_in', 'Airport Check-in', datetime('now'))
         """))
         db.commit()
         

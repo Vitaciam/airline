@@ -37,11 +37,15 @@ def db():
     db = TestingSessionLocal()
     try:
         # Drop tables first to avoid conflicts
-        db.execute(text("DROP TABLE IF EXISTS baggage"))
-        db.execute(text("DROP TABLE IF EXISTS bookings"))
-        db.execute(text("DROP TABLE IF EXISTS users"))
-        db.execute(text("DROP TABLE IF EXISTS flights"))
-        db.execute(text("DROP TABLE IF EXISTS airlines"))
+        try:
+            db.execute(text("DROP TABLE IF EXISTS baggage"))
+            db.execute(text("DROP TABLE IF EXISTS bookings"))
+            db.execute(text("DROP TABLE IF EXISTS users"))
+            db.execute(text("DROP TABLE IF EXISTS flights"))
+            db.execute(text("DROP TABLE IF EXISTS airlines"))
+            db.commit()
+        except Exception:
+            db.rollback()
         
         # Create test tables
         db.execute(text("""
@@ -100,15 +104,14 @@ def db():
         db.commit()
         yield db
     finally:
-        db.rollback()
-        # Clean up tables
-        db.execute(text("DROP TABLE IF EXISTS baggage"))
-        db.execute(text("DROP TABLE IF EXISTS bookings"))
-        db.execute(text("DROP TABLE IF EXISTS users"))
-        db.execute(text("DROP TABLE IF EXISTS flights"))
-        db.execute(text("DROP TABLE IF EXISTS airlines"))
-        db.commit()
-        db.close()
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 @pytest.fixture
@@ -150,8 +153,11 @@ class TestAirlines:
     def test_create_airline(self, client, admin_token, db):
         """Test creating an airline"""
         # Clear existing data
-        db.execute(text("DELETE FROM airlines"))
-        db.commit()
+        try:
+            db.execute(text("DELETE FROM airlines"))
+            db.commit()
+        except Exception:
+            db.rollback()
         
         airline_data = {
             "name": "Test Airlines",
@@ -171,7 +177,11 @@ class TestAirlines:
     def test_get_airlines(self, client, admin_token, db):
         """Test getting all airlines"""
         # Clear existing data
-        db.execute(text("DELETE FROM airlines"))
+        try:
+            db.execute(text("DELETE FROM airlines"))
+            db.commit()
+        except Exception:
+            db.rollback()
         
         # Create test airline
         db.execute(text("""

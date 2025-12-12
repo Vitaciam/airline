@@ -16,7 +16,7 @@ for service in "${services[@]}"; do
     cd "$service"
     
     if [ -d "tests" ]; then
-        python -m pytest tests/ -v --cov=src --cov-report=term
+        python3 -m pytest tests/ -v --cov=src --cov-report=term
     else
         echo "No tests directory found for $service"
     fi

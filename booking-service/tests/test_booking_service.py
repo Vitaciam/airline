@@ -152,8 +152,8 @@ class TestFlights:
         """Test getting booked seats for a flight"""
         # Create a booking
         db.execute(text("""
-            INSERT INTO bookings (user_id, flight_id, seat_number, status)
-            VALUES (1, 1, 'A1', 'confirmed')
+            INSERT INTO bookings (user_id, flight_id, seat_number, booking_date, status)
+            VALUES (1, 1, 'A1', datetime('now'), 'confirmed')
         """))
         db.commit()
         
@@ -213,8 +213,8 @@ class TestBookings:
         """Test booking duplicate seat"""
         # Create first booking
         db.execute(text("""
-            INSERT INTO bookings (user_id, flight_id, seat_number, status)
-            VALUES (1, 1, 'A1', 'confirmed')
+            INSERT INTO bookings (user_id, flight_id, seat_number, booking_date, status)
+            VALUES (1, 1, 'A1', datetime('now'), 'confirmed')
         """))
         db.commit()
         
@@ -234,8 +234,8 @@ class TestBookings:
         """Test getting user's bookings"""
         # Create booking
         db.execute(text("""
-            INSERT INTO bookings (id, user_id, flight_id, seat_number, status)
-            VALUES (1, 1, 1, 'A1', 'confirmed')
+            INSERT INTO bookings (id, user_id, flight_id, seat_number, booking_date, status)
+            VALUES (1, 1, 1, 'A1', datetime('now'), 'confirmed')
         """))
         db.commit()
         
@@ -251,8 +251,8 @@ class TestBookings:
         """Test getting specific booking"""
         # Create booking
         db.execute(text("""
-            INSERT INTO bookings (id, user_id, flight_id, seat_number, status)
-            VALUES (1, 1, 1, 'A1', 'confirmed')
+            INSERT INTO bookings (id, user_id, flight_id, seat_number, booking_date, status)
+            VALUES (1, 1, 1, 'A1', datetime('now'), 'confirmed')
         """))
         db.commit()
         
@@ -268,8 +268,8 @@ class TestBookings:
         """Test canceling a booking"""
         # Create booking
         db.execute(text("""
-            INSERT INTO bookings (id, user_id, flight_id, seat_number, status)
-            VALUES (1, 1, 1, 'A1', 'confirmed')
+            INSERT INTO bookings (id, user_id, flight_id, seat_number, booking_date, status)
+            VALUES (1, 1, 1, 'A1', datetime('now'), 'confirmed')
         """))
         db.commit()
         
