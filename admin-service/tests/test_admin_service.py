@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import StaticPool, NullPool
 from unittest.mock import patch
 import sys
 import os
@@ -25,7 +25,7 @@ SQLALCHEMY_DATABASE_URL = f"sqlite:///{test_db_path}"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False, "timeout": 20},
-    poolclass=StaticPool,
+    poolclass=NullPool,  # Use NullPool to avoid connection reuse issues
     pool_pre_ping=True,
 )
 # Enable WAL mode for better concurrency
@@ -143,6 +143,10 @@ def client(db):
         test_db = TestingSessionLocal()
         try:
             yield test_db
+            test_db.commit()
+        except Exception:
+            test_db.rollback()
+            raise
         finally:
             test_db.close()
     
@@ -230,6 +234,14 @@ class TestFlights:
         )
         assert airline_response.status_code == 201
         airline_id = airline_response.json()["id"]
+        
+        # Ensure the airline was created by verifying it exists
+        verify_response = client.get(
+            "/airlines",
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert verify_response.status_code == 200
+        assert len(verify_response.json()) > 0
         
         flight_data = {
             "airline_id": airline_id,
