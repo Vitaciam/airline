@@ -165,9 +165,8 @@ async def create_airline(
     # Create airline
     result = db.execute(
         text("""
-            INSERT INTO airlines (name, code, country)
-            VALUES (:name, :code, :country)
-            RETURNING id, name, code, country, created_at
+            INSERT INTO airlines (name, code, country, created_at)
+            VALUES (:name, :code, :country, datetime('now'))
         """),
         {
             "name": airline_data.name,
@@ -176,6 +175,12 @@ async def create_airline(
         }
     )
     db.commit()
+    
+    # Get the created airline
+    result = db.execute(
+        text("SELECT id, name, code, country, created_at FROM airlines WHERE code = :code"),
+        {"code": airline_data.code}
+    )
     row = result.fetchone()
     
     return AirlineResponse(
@@ -183,7 +188,7 @@ async def create_airline(
         name=row[1],
         code=row[2],
         country=row[3],
-        created_at=row[4]
+        created_at=datetime.fromisoformat(row[4].replace('Z', '+00:00')) if isinstance(row[4], str) else row[4]
     )
 
 
@@ -372,9 +377,9 @@ async def create_flight(
     result = db.execute(
         text("""
             INSERT INTO flights (airline_id, flight_number, origin, destination,
-                                 departure_time, arrival_time, total_seats, available_seats, price)
+                                 departure_time, arrival_time, total_seats, available_seats, price, created_at)
             VALUES (:airline_id, :flight_number, :origin, :destination,
-                    :departure_time, :arrival_time, :total_seats, :available_seats, :price)
+                    :departure_time, :arrival_time, :total_seats, :available_seats, :price, datetime('now'))
             RETURNING id, airline_id, flight_number, origin, destination,
                      departure_time, arrival_time, total_seats, available_seats, price, created_at
         """),

@@ -176,8 +176,8 @@ class TestPaymentCreation:
         # Create first payment
         db.execute(text("""
             INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
-                                 currency, payment_method, status)
-            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed')
+                                 currency, payment_method, status, created_at)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed', datetime('now'))
         """))
         db.commit()
         
@@ -216,8 +216,8 @@ class TestPaymentQueries:
         # Create payment
         db.execute(text("""
             INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
-                                 currency, payment_method, status)
-            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed')
+                                 currency, payment_method, status, created_at)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed', datetime('now'))
         """))
         db.commit()
         
@@ -246,8 +246,8 @@ class TestPaymentQueries:
         # Create payment
         db.execute(text("""
             INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
-                                 currency, payment_method, status)
-            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed')
+                                 currency, payment_method, status, created_at)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed', datetime('now'))
         """))
         db.commit()
         
@@ -279,8 +279,8 @@ class TestRefund:
         # Create completed payment
         db.execute(text("""
             INSERT INTO payments (id, booking_id, user_id, payment_id, amount, 
-                                 currency, payment_method, status, completed_at)
-            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed', datetime('now'))
+                                 currency, payment_method, status, created_at, completed_at)
+            VALUES (1, 1, 1, 'PAY-123456', 299.99, 'USD', 'card', 'completed', datetime('now'), datetime('now'))
         """))
         db.commit()
         

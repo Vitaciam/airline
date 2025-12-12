@@ -14,14 +14,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from main import app, get_db, Base
 
-# Create in-memory SQLite database for testing
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+# Create file-based SQLite database for testing to avoid transaction conflicts
+import tempfile
+import os
+test_db_file = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+test_db_path = test_db_file.name
+test_db_file.close()
+
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{test_db_path}"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Clean up test database file after tests
+import atexit
+atexit.register(lambda: os.unlink(test_db_path) if os.path.exists(test_db_path) else None)
 
 # Use same secret as default in main.py or set via env var
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-jwt-key-change-in-production")
@@ -33,7 +43,6 @@ def db():
     """Create database tables and session for testing"""
     # Clean up before creating new tables
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:
         # Drop tables first to avoid conflicts
@@ -47,9 +56,9 @@ def db():
         except Exception:
             db.rollback()
         
-        # Create test tables
+        # Create test tables with IF NOT EXISTS
         db.execute(text("""
-            CREATE TABLE airlines (
+            CREATE TABLE IF NOT EXISTS airlines (
                 id INTEGER PRIMARY KEY,
                 name TEXT,
                 code TEXT UNIQUE,
@@ -58,7 +67,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE flights (
+            CREATE TABLE IF NOT EXISTS flights (
                 id INTEGER PRIMARY KEY,
                 airline_id INTEGER,
                 flight_number TEXT,
@@ -69,11 +78,11 @@ def db():
                 total_seats INTEGER,
                 available_seats INTEGER,
                 price REAL,
-                created_at TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         db.execute(text("""
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
                 email TEXT,
                 first_name TEXT,
@@ -84,7 +93,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE bookings (
+            CREATE TABLE IF NOT EXISTS bookings (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
                 flight_id INTEGER,
@@ -94,7 +103,7 @@ def db():
             )
         """))
         db.execute(text("""
-            CREATE TABLE baggage (
+            CREATE TABLE IF NOT EXISTS baggage (
                 id INTEGER PRIMARY KEY,
                 booking_id INTEGER,
                 baggage_tag TEXT,
@@ -122,10 +131,12 @@ def client(db):
     os.environ["JWT_ALGORITHM"] = JWT_ALGORITHM
     
     def override_get_db():
+        # Create a new session for each request to avoid transaction conflicts
+        test_db = TestingSessionLocal()
         try:
-            yield db
+            yield test_db
         finally:
-            pass
+            test_db.close()
     
     async def override_verify_admin_token():
         """Override verify_admin_token for testing"""
@@ -153,11 +164,8 @@ class TestAirlines:
     def test_create_airline(self, client, admin_token, db):
         """Test creating an airline"""
         # Clear existing data
-        try:
-            db.execute(text("DELETE FROM airlines"))
-            db.commit()
-        except Exception:
-            db.rollback()
+        db.execute(text("DELETE FROM airlines"))
+        db.commit()
         
         airline_data = {
             "name": "Test Airlines",
@@ -177,11 +185,8 @@ class TestAirlines:
     def test_get_airlines(self, client, admin_token, db):
         """Test getting all airlines"""
         # Clear existing data
-        try:
-            db.execute(text("DELETE FROM airlines"))
-            db.commit()
-        except Exception:
-            db.rollback()
+        db.execute(text("DELETE FROM airlines"))
+        db.commit()
         
         # Create test airline
         db.execute(text("""
@@ -204,16 +209,21 @@ class TestFlights:
     
     def test_create_flight(self, client, admin_token, db):
         """Test creating a flight"""
-        # Clear existing data
-        db.execute(text("DELETE FROM flights"))
-        db.execute(text("DELETE FROM airlines"))
-        
-        # Create airline first
-        db.execute(text("""
-            INSERT INTO airlines (id, name, code, country, created_at)
-            VALUES (1, 'Test Airlines', 'TA', 'Test Country', datetime('now'))
-        """))
-        db.commit()
+        # Setup: create airline first using a separate connection
+        # This ensures the transaction is fully committed before the endpoint runs
+        import sqlite3
+        raw_conn = sqlite3.connect(test_db_path)
+        try:
+            cursor = raw_conn.cursor()
+            cursor.execute("DELETE FROM flights")
+            cursor.execute("DELETE FROM airlines")
+            cursor.execute("""
+                INSERT INTO airlines (id, name, code, country, created_at)
+                VALUES (1, 'Test Airlines', 'TA', 'Test Country', datetime('now'))
+            """)
+            raw_conn.commit()
+        finally:
+            raw_conn.close()
         
         flight_data = {
             "airline_id": 1,
@@ -240,9 +250,10 @@ class TestStatistics:
     
     def test_get_statistics(self, client, admin_token, db):
         """Test getting system statistics"""
-        # Clear existing data
-        db.execute(text("DELETE FROM baggage"))
-        db.execute(text("DELETE FROM bookings"))
+        # Clear existing data using direct connection with explicit transaction
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM baggage"))
+            conn.execute(text("DELETE FROM bookings"))
         db.execute(text("DELETE FROM flights"))
         db.execute(text("DELETE FROM users"))
         
