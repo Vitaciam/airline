@@ -24,9 +24,17 @@ test_db_file.close()
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{test_db_path}"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 20},
     poolclass=StaticPool,
+    pool_pre_ping=True,
 )
+# Enable WAL mode for better concurrency
+from sqlalchemy import event
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Clean up test database file after tests
@@ -209,24 +217,22 @@ class TestFlights:
     
     def test_create_flight(self, client, admin_token, db):
         """Test creating a flight"""
-        # Setup: create airline first using a separate connection
-        # This ensures the transaction is fully committed before the endpoint runs
-        import sqlite3
-        raw_conn = sqlite3.connect(test_db_path)
-        try:
-            cursor = raw_conn.cursor()
-            cursor.execute("DELETE FROM flights")
-            cursor.execute("DELETE FROM airlines")
-            cursor.execute("""
-                INSERT INTO airlines (id, name, code, country, created_at)
-                VALUES (1, 'Test Airlines', 'TA', 'Test Country', datetime('now'))
-            """)
-            raw_conn.commit()
-        finally:
-            raw_conn.close()
+        # Setup: create airline first using the API endpoint to avoid transaction conflicts
+        airline_data = {
+            "name": "Test Airlines",
+            "code": "TA",
+            "country": "Test Country"
+        }
+        airline_response = client.post(
+            "/airlines",
+            json=airline_data,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert airline_response.status_code == 201
+        airline_id = airline_response.json()["id"]
         
         flight_data = {
-            "airline_id": 1,
+            "airline_id": airline_id,
             "flight_number": "FL001",
             "origin": "Paris",
             "destination": "London",
@@ -250,31 +256,43 @@ class TestStatistics:
     
     def test_get_statistics(self, client, admin_token, db):
         """Test getting system statistics"""
-        # Clear existing data using direct connection with explicit transaction
-        with engine.begin() as conn:
-            conn.execute(text("DELETE FROM baggage"))
-            conn.execute(text("DELETE FROM bookings"))
-        db.execute(text("DELETE FROM flights"))
-        db.execute(text("DELETE FROM users"))
-        
-        # Create test data
-        db.execute(text("""
-            INSERT INTO users (id, email, first_name, last_name, is_admin, created_at)
-            VALUES (1, 'test@example.com', 'Test', 'User', 0, datetime('now'))
-        """))
-        db.execute(text("""
-            INSERT INTO flights (id, flight_number, created_at)
-            VALUES (1, 'FL001', datetime('now'))
-        """))
-        db.execute(text("""
-            INSERT INTO bookings (id, user_id, flight_id, status)
-            VALUES (1, 1, 1, 'confirmed')
-        """))
-        db.execute(text("""
-            INSERT INTO baggage (id, booking_id, baggage_tag, status)
-            VALUES (1, 1, 'ABC123', 'checked_in')
-        """))
-        db.commit()
+        # Clear existing data using a separate engine to avoid transaction conflicts
+        setup_engine = create_engine(
+            SQLALCHEMY_DATABASE_URL,
+            connect_args={"check_same_thread": False, "timeout": 20},
+            poolclass=StaticPool,
+        )
+        setup_conn = setup_engine.connect()
+        try:
+            trans = setup_conn.begin()
+            try:
+                setup_conn.execute(text("DELETE FROM baggage"))
+                setup_conn.execute(text("DELETE FROM bookings"))
+                setup_conn.execute(text("DELETE FROM flights"))
+                setup_conn.execute(text("DELETE FROM users"))
+                setup_conn.execute(text("""
+                    INSERT INTO users (id, email, first_name, last_name, is_admin, created_at)
+                    VALUES (1, 'test@example.com', 'Test', 'User', 0, datetime('now'))
+                """))
+                setup_conn.execute(text("""
+                    INSERT INTO flights (id, flight_number, created_at)
+                    VALUES (1, 'FL001', datetime('now'))
+                """))
+                setup_conn.execute(text("""
+                    INSERT INTO bookings (id, user_id, flight_id, status, booking_date)
+                    VALUES (1, 1, 1, 'confirmed', datetime('now'))
+                """))
+                setup_conn.execute(text("""
+                    INSERT INTO baggage (id, booking_id, baggage_tag, status)
+                    VALUES (1, 1, 'ABC123', 'checked_in')
+                """))
+                trans.commit()
+            except Exception:
+                trans.rollback()
+                raise
+        finally:
+            setup_conn.close()
+            setup_engine.dispose()
         
         response = client.get(
             "/statistics",
